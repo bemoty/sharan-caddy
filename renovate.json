@@ -1,0 +1,21 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:base"],
+  "packageRules": [
+    {
+      "matchFileNames": ["modules.json"],
+      "groupName": "caddy modules",
+      "automerge": true
+    }
+  ],
+  "regexManagers": [
+    {
+      "fileMatch": ["^modules\\.json$"],
+      "matchStrings": [
+        "\"import\":\\s*\"(?<depName>[^\"]+)\",\\s*\"version\":\\s*\"(?<currentValue>[^\"]+)\""
+      ],
+      "datasourceTemplate": "go",
+      "versioningTemplate": "loose"
+    }
+  ]
+}

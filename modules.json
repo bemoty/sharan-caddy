@@ -1,0 +1,35 @@
+{
+  "bundles": [
+    {
+      "name": "stock",
+      "description": "Upstream Caddy re-tag. No extra modules.",
+      "retag": "caddy:2-alpine",
+      "modules": []
+    },
+    {
+      "name": "cloud",
+      "description": "DNS-01 providers and layer4. For VPS and cloud servers.",
+      "base_image": "caddy:2-alpine",
+      "modules": [
+        { "id": "layer4",                     "import": "github.com/mholt/caddy-l4",            "version": "v0.1.1" },
+        { "id": "dns.providers.cloudflare",   "import": "github.com/caddy-dns/cloudflare",      "version": "v0.2.4" },
+        { "id": "dns.providers.route53",      "import": "github.com/caddy-dns/route53",         "version": "v1.6.2" },
+        { "id": "dns.providers.hetzner",      "import": "github.com/caddy-dns/hetzner",         "version": "v1.0.0" },
+        { "id": "dns.providers.digitalocean", "import": "github.com/caddy-dns/digitalocean",    "version": "v0.0.0-20250606074528-04bde2867106" }
+      ]
+    },
+    {
+      "name": "homelab",
+      "description": "DNS-01 providers, layer4, and Tailscale. For home networks.",
+      "base_image": "caddy:2-alpine",
+      "modules": [
+        { "id": "layer4",                     "import": "github.com/mholt/caddy-l4",            "version": "v0.1.1" },
+        { "id": "tailscale",                  "import": "github.com/tailscale/caddy-tailscale", "version": "v0.0.0-20260106222316-bb080c4414ac" },
+        { "id": "dns.providers.cloudflare",   "import": "github.com/caddy-dns/cloudflare",      "version": "v0.2.4" },
+        { "id": "dns.providers.route53",      "import": "github.com/caddy-dns/route53",         "version": "v1.6.2" },
+        { "id": "dns.providers.hetzner",      "import": "github.com/caddy-dns/hetzner",         "version": "v1.0.0" },
+        { "id": "dns.providers.digitalocean", "import": "github.com/caddy-dns/digitalocean",    "version": "v0.0.0-20250606074528-04bde2867106" }
+      ]
+    }
+  ]
+}
