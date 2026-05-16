@@ -28,7 +28,7 @@ jobs:
       caddy_version: ${{ steps.version.outputs.value }}
       bundles: ${{ steps.bundles.outputs.json }}
     steps:
-      - uses: actions/checkout@v6.0.0
+      - uses: actions/checkout@v6.0.2
 
       - name: Resolve Caddy version
         id: version
@@ -51,7 +51,7 @@ jobs:
       matrix:
         bundle: ${{ fromJson(needs.prepare.outputs.bundles) }}
     steps:
-      - uses: actions/checkout@v6.0.0
+      - uses: actions/checkout@v6.0.2
 
       - name: Set up Buildx
         uses: docker/setup-buildx-action@v4.0.0
@@ -89,7 +89,7 @@ jobs:
 
       - name: Build and push
         if: steps.type.outputs.retag == ''
-        uses: docker/build-push-action@v6.0.2
+        uses: docker/build-push-action@v7.1.0
         with:
           context: .
           platforms: linux/amd64,linux/arm64
@@ -106,7 +106,7 @@ jobs:
 
       - name: File issue on failure
         if: failure()
-        uses: peter-evans/create-issue-from-file@v7.1.0
+        uses: peter-evans/create-issue-from-file@v6.0.0
         with:
           title: 'Build failed: ${{ matrix.bundle }} (${{ needs.prepare.outputs.caddy_version }})'
           content-filepath: .github/ISSUE_TEMPLATE/build-failed.md
