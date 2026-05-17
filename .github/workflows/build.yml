@@ -71,7 +71,11 @@ jobs:
           MAJOR_MINOR="$(echo "$VER" | cut -d. -f1,2)"
           BUNDLE="${{ matrix.bundle }}"
           REPO="ghcr.io/${{ github.repository_owner }}/sharan-caddy"
-          echo "list=${REPO}:${BUNDLE},${REPO}:${MAJOR_MINOR}-${BUNDLE},${REPO}:${VER}-${BUNDLE}" >> "$GITHUB_OUTPUT"
+          if [ "$BUNDLE" = "latest" ]; then
+            echo "list=${REPO}:latest,${REPO}:${MAJOR_MINOR},${REPO}:${VER}" >> "$GITHUB_OUTPUT"
+          else
+            echo "list=${REPO}:${BUNDLE},${REPO}:${MAJOR_MINOR}-${BUNDLE},${REPO}:${VER}-${BUNDLE}" >> "$GITHUB_OUTPUT"
+          fi
           echo "first=${REPO}:${BUNDLE}" >> "$GITHUB_OUTPUT"
 
       - name: Check bundle type

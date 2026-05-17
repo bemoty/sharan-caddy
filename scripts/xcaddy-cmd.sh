@@ -1,7 +1,7 @@
 #!/bin/sh
 set -e
 
-BUNDLE="${1:-homelab}"
+BUNDLE="${1:-latest}"
 MODULES_JSON="$(cd "$(dirname "$0")/.." && pwd)/modules.json"
 
 RETAG=$(jq -r --arg b "$BUNDLE" '.bundles[] | select(.name == $b) | .retag // ""' "$MODULES_JSON")
