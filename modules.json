@@ -10,6 +10,7 @@
         { "id": "dns.providers.cloudflare",   "import": "github.com/caddy-dns/cloudflare",      "version": "v0.2.4" },
         { "id": "dns.providers.route53",      "import": "github.com/caddy-dns/route53",         "version": "v1.6.2" },
         { "id": "dns.providers.hetzner",      "import": "github.com/caddy-dns/hetzner",         "version": "v1.0.0" },
+        { "id": "dns.providers.ionos",        "import": "github.com/caddy-dns/ionos",           "version": "v1.2.0" },
         { "id": "dns.providers.digitalocean", "import": "github.com/caddy-dns/digitalocean",    "version": "v0.0.0-20250606074528-04bde2867106" }
       ]
     }
