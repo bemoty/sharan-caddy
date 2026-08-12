@@ -21,8 +21,7 @@ package.
 sharan-caddy bundles the following modules in addition to Caddy's standard
 module set:
 
-layer4, tailscale, dns.providers.cloudflare, dns.providers.route53,
-dns.providers.hetzner, dns.providers.ionos, dns.providers.digitalocean
+{{MODULE_IDS}}
 
 # FILES
 

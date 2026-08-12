@@ -16,6 +16,14 @@
         "\"import\":\\s*\"(?<depName>[^\"]+)\",\\s*\"version\":\\s*\"(?<currentValue>[^\"]+)\""
       ],
       "datasourceTemplate": "go"
+    },
+    {
+      "customType": "regex",
+      "fileMatch": ["^Dockerfile$", "^\\.github/workflows/build\\.yml$"],
+      "matchStrings": [
+        "go install (?<depName>github\\.com/[^/\\s]+/[^/\\s]+(?:/v\\d+)?)(?:/\\S+)?@(?<currentValue>\\S+)"
+      ],
+      "datasourceTemplate": "go"
     }
   ]
 }

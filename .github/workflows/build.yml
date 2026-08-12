@@ -6,12 +6,16 @@ on:
     paths:
       - modules.json
       - Dockerfile
+      - go.mod
+      - tools/modtool/**
       - packaging/sharan-caddy/**
       - .github/workflows/build.yml
   pull_request:
     paths:
       - modules.json
       - Dockerfile
+      - go.mod
+      - tools/modtool/**
       - packaging/sharan-caddy/**
       - .github/workflows/build.yml
   schedule:
@@ -38,6 +42,11 @@ jobs:
     steps:
       - uses: actions/checkout@v6.0.2
 
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: stable
+
       - name: Resolve Caddy version
         id: version
         run: |
@@ -53,7 +62,7 @@ jobs:
 
       - name: Read bundle names
         id: bundles
-        run: echo "json=$(jq -c '[.bundles[].name]' modules.json)" >> "$GITHUB_OUTPUT"
+        run: echo "json=$(go run ./tools/modtool bundles)" >> "$GITHUB_OUTPUT"
 
   build:
     needs: prepare
@@ -64,6 +73,11 @@ jobs:
         bundle: ${{ fromJson(needs.prepare.outputs.bundles) }}
     steps:
       - uses: actions/checkout@v6.0.2
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: stable
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
@@ -98,21 +112,7 @@ jobs:
           echo "immutable=${IMMUTABLE}" >> "$GITHUB_OUTPUT"
           echo "first=${REPO}:${BUNDLE}" >> "$GITHUB_OUTPUT"
 
-      - name: Check bundle type
-        id: type
-        run: |
-          RETAG=$(jq -r --arg b "${{ matrix.bundle }}" '.bundles[] | select(.name == $b) | .retag // ""' modules.json)
-          echo "retag=$RETAG" >> "$GITHUB_OUTPUT"
-
-      - name: Retag upstream image
-        if: steps.type.outputs.retag != ''
-        run: |
-          SOURCE="${{ steps.type.outputs.retag }}"
-          TAG_ARGS=$(echo "${{ steps.tags.outputs.list }}" | tr ',' '\n' | while read -r t; do printf -- '--tag %s ' "$t"; done)
-          docker buildx imagetools create $TAG_ARGS "$SOURCE"
-
       - name: Build and push
-        if: steps.type.outputs.retag == ''
         uses: docker/build-push-action@v7.1.0
         with:
           context: .
@@ -127,9 +127,8 @@ jobs:
           cache-to: type=gha,mode=max
 
       - name: Module smoke test
-        if: steps.type.outputs.retag == ''
         run: |
-          IDS=$(jq -r --arg b "${{ matrix.bundle }}" '.bundles[] | select(.name == $b) | .modules[].id' modules.json)
+          IDS=$(go run ./tools/modtool ids "${{ matrix.bundle }}")
           OUTPUT=$(docker run --rm "${{ steps.tags.outputs.first }}" caddy list-modules)
           STATUS=0
           while IFS= read -r id; do
@@ -140,10 +139,6 @@ jobs:
             fi
           done <<< "$IDS"
           exit $STATUS
-
-      - name: Retag smoke test
-        if: steps.type.outputs.retag != ''
-        run: docker run --rm "${{ steps.tags.outputs.first }}" caddy version
 
       - name: File issue on failure
         if: failure() && github.event_name != 'pull_request'
@@ -159,6 +154,8 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+    env:
+      BUNDLE: latest
     steps:
       - uses: actions/checkout@v6.0.2
 
@@ -192,18 +189,33 @@ jobs:
       - name: Install xcaddy, nfpm and go-md2man
         if: steps.existing.outputs.skip == 'false'
         run: |
-          go install github.com/caddyserver/xcaddy/cmd/xcaddy@latest
-          go install github.com/goreleaser/nfpm/v2/cmd/nfpm@latest
-          go install github.com/cpuguy83/go-md2man/v2@latest
+          go install github.com/caddyserver/xcaddy/cmd/xcaddy@v0.4.6
+          go install github.com/goreleaser/nfpm/v2/cmd/nfpm@v2.47.0
+          go install github.com/cpuguy83/go-md2man/v2@v2.0.7
 
       - name: Build binaries
         if: steps.existing.outputs.skip == 'false'
         run: |
-          MODULES=$(jq -r '.bundles[] | select(.name == "latest") | .modules[] | "--with \(.import)@\(.version)"' modules.json | tr '\n' ' ')
+          MODULES=$(go run ./tools/modtool xcaddy-args "$BUNDLE")
           for ARCH in amd64 arm64; do
             mkdir -p "dist/${ARCH}"
             CGO_ENABLED=0 GOOS=linux GOARCH="$ARCH" xcaddy build "v${{ steps.release.outputs.version }}" $MODULES --output "dist/${ARCH}/sharan-caddy"
           done
+
+      - name: Binary smoke test
+        if: steps.existing.outputs.skip == 'false'
+        run: |
+          IDS=$(go run ./tools/modtool ids "$BUNDLE")
+          OUTPUT=$(dist/amd64/sharan-caddy list-modules)
+          STATUS=0
+          while IFS= read -r id; do
+            [ -z "$id" ] && continue
+            if ! echo "$OUTPUT" | grep -qF "$id"; then
+              echo "missing module: $id" >&2
+              STATUS=1
+            fi
+          done <<< "$IDS"
+          exit $STATUS
 
       - name: Archive binaries
         if: steps.existing.outputs.skip == 'false'
@@ -217,7 +229,9 @@ jobs:
         if: steps.existing.outputs.skip == 'false'
         run: |
           mkdir -p dist/man
-          go-md2man -in packaging/sharan-caddy/sharan-caddy.8.md -out dist/man/sharan-caddy.8
+          IDS=$(go run ./tools/modtool ids "$BUNDLE" | paste -sd, - | sed 's/,/, /g')
+          sed "s#{{MODULE_IDS}}#$IDS#" packaging/sharan-caddy/sharan-caddy.8.md > dist/man/sharan-caddy.8.md
+          go-md2man -in dist/man/sharan-caddy.8.md -out dist/man/sharan-caddy.8
           gzip -9n dist/man/sharan-caddy.8
 
       - name: Build packages

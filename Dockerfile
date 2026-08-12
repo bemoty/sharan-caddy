@@ -3,15 +3,14 @@ ARG TARGETARCH
 ARG CADDY_VERSION=latest
 ARG BUNDLE=latest
 
-RUN apk add --no-cache jq && \
-    go install github.com/caddyserver/xcaddy/cmd/xcaddy@latest
+RUN go install github.com/caddyserver/xcaddy/cmd/xcaddy@v0.4.6
 
 COPY modules.json /modules.json
+COPY go.mod /src/go.mod
+COPY tools/modtool /src/tools/modtool
 
 RUN set -eux; \
-    MODULES=$(jq -r --arg b "$BUNDLE" \
-      '.bundles[] | select(.name == $b) | .modules[] | "--with \(.import)@\(.version)"' \
-      /modules.json | tr '\n' ' '); \
+    MODULES=$(cd /src && go run ./tools/modtool -manifest /modules.json xcaddy-args "$BUNDLE"); \
     if [ "$CADDY_VERSION" = "latest" ]; then \
       CGO_ENABLED=0 GOARCH="$TARGETARCH" xcaddy build $MODULES --output /usr/local/bin/caddy; \
     else \
