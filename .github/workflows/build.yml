@@ -8,6 +8,12 @@ on:
       - Dockerfile
       - packaging/sharan-caddy/**
       - .github/workflows/build.yml
+  pull_request:
+    paths:
+      - modules.json
+      - Dockerfile
+      - packaging/sharan-caddy/**
+      - .github/workflows/build.yml
   schedule:
     - cron: '0 6 * * 1'
   workflow_dispatch:
@@ -66,6 +72,7 @@ jobs:
         uses: docker/setup-buildx-action@v4.0.0
 
       - name: Log in to ghcr.io
+        if: github.event_name != 'pull_request'
         uses: docker/login-action@v4.1.0
         with:
           registry: ghcr.io
@@ -109,8 +116,9 @@ jobs:
         uses: docker/build-push-action@v7.1.0
         with:
           context: .
-          platforms: linux/amd64,linux/arm64
-          push: true
+          platforms: ${{ github.event_name == 'pull_request' && 'linux/amd64' || 'linux/amd64,linux/arm64' }}
+          push: ${{ github.event_name != 'pull_request' }}
+          load: ${{ github.event_name == 'pull_request' }}
           tags: ${{ steps.tags.outputs.list }}
           build-args: |
             BUNDLE=${{ matrix.bundle }}
@@ -138,7 +146,7 @@ jobs:
         run: docker run --rm "${{ steps.tags.outputs.first }}" caddy version
 
       - name: File issue on failure
-        if: failure()
+        if: failure() && github.event_name != 'pull_request'
         uses: peter-evans/create-issue-from-file@v6.0.0
         with:
           title: 'Build failed: ${{ matrix.bundle }} (${{ needs.prepare.outputs.caddy_version }})'
@@ -147,6 +155,7 @@ jobs:
 
   package:
     needs: [prepare, build]
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -180,11 +189,12 @@ jobs:
         with:
           go-version: stable
 
-      - name: Install xcaddy and nfpm
+      - name: Install xcaddy, nfpm and go-md2man
         if: steps.existing.outputs.skip == 'false'
         run: |
           go install github.com/caddyserver/xcaddy/cmd/xcaddy@latest
           go install github.com/goreleaser/nfpm/v2/cmd/nfpm@latest
+          go install github.com/cpuguy83/go-md2man/v2@latest
 
       - name: Build binaries
         if: steps.existing.outputs.skip == 'false'
@@ -203,9 +213,12 @@ jobs:
             tar -C "dist/${ARCH}" -czf "dist/archives/sharan-caddy_${{ steps.release.outputs.version }}-${{ steps.release.outputs.hash }}_linux_${ARCH}.tar.gz" sharan-caddy
           done
 
-      - name: Generate manpages
+      - name: Generate manpage
         if: steps.existing.outputs.skip == 'false'
-        run: scripts/manpages.sh dist/amd64/sharan-caddy dist/man
+        run: |
+          mkdir -p dist/man
+          go-md2man -in packaging/sharan-caddy/sharan-caddy.8.md -out dist/man/sharan-caddy.8
+          gzip -9n dist/man/sharan-caddy.8
 
       - name: Build packages
         if: steps.existing.outputs.skip == 'false'
