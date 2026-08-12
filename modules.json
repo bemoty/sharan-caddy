@@ -2,7 +2,7 @@
   "bundles": [
     {
       "name": "latest",
-      "description": "Full batteries-included image. DNS-01 providers, layer4, and Tailscale.",
+      "description": "Caddy web server image for use with Sharan",
       "base_image": "caddy:2-alpine",
       "modules": [
         { "id": "layer4",                     "import": "github.com/mholt/caddy-l4",            "version": "v0.1.1" },
