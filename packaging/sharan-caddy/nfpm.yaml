@@ -1,0 +1,96 @@
+name: sharan-caddy
+arch: ${ARCH}
+platform: linux
+version: ${VERSION}+${HASH}
+version_schema: none
+section: net
+priority: optional
+maintainer: Joshua Winkler <josh@bemoty.dev>
+homepage: https://github.com/bemoty/sharan-caddy
+license: Apache-2.0 AND MIT
+description: |-
+  Caddy web server built for use with Sharan.
+  Bundles DNS-01 providers, layer4, and Tailscale modules used by Sharan.
+
+contents:
+  - src: ./dist/${ARCH}/sharan-caddy
+    dst: /usr/bin/sharan-caddy
+    expand: true
+    file_info:
+      mode: 0755
+
+  - dst: /etc/sharan-caddy
+    type: dir
+    file_info:
+      mode: 0750
+      owner: root
+      group: sharan-caddy
+
+  - src: packaging/sharan-caddy/Caddyfile
+    dst: /etc/sharan-caddy/Caddyfile
+    type: config|noreplace
+    file_info:
+      mode: 0640
+      owner: root
+      group: sharan-caddy
+
+  - dst: /var/lib/sharan-caddy
+    type: dir
+    file_info:
+      mode: 0750
+      owner: sharan-caddy
+      group: sharan-caddy
+
+  - src: packaging/sharan-caddy/sharan-caddy.service
+    dst: /usr/lib/systemd/system/sharan-caddy.service
+    file_info:
+      mode: 0644
+
+  - src: packaging/sharan-caddy/copyright
+    dst: /usr/share/doc/sharan-caddy/copyright
+    file_info:
+      mode: 0644
+    packager: deb
+
+  - src: packaging/sharan-caddy/upstream/caddy-LICENSE
+    dst: /usr/share/doc/sharan-caddy/caddy-LICENSE
+    file_info:
+      mode: 0644
+
+  - src: packaging/sharan-caddy/upstream/caddy-AUTHORS
+    dst: /usr/share/doc/sharan-caddy/caddy-AUTHORS
+    file_info:
+      mode: 0644
+
+  - src: LICENSE
+    dst: /usr/share/licenses/sharan-caddy/LICENSE
+    file_info:
+      mode: 0644
+    packager: rpm
+
+  - src: LICENSE
+    dst: /usr/share/licenses/sharan-caddy/LICENSE
+    file_info:
+      mode: 0644
+    packager: apk
+
+  - src: LICENSE
+    dst: /usr/share/licenses/sharan-caddy/LICENSE
+    file_info:
+      mode: 0644
+    packager: archlinux
+
+  - src: dist/man/*.8.gz
+    dst: /usr/share/man/man8/
+    file_info:
+      mode: 0644
+
+scripts:
+  preinstall: packaging/sharan-caddy/preinstall.sh
+  postinstall: packaging/sharan-caddy/postinstall.sh
+  preremove: packaging/sharan-caddy/preremove.sh
+
+overrides:
+  deb:
+    depends:
+      - adduser

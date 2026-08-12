@@ -6,6 +6,7 @@ on:
     paths:
       - modules.json
       - Dockerfile
+      - packaging/sharan-caddy/**
       - .github/workflows/build.yml
   schedule:
     - cron: '0 6 * * 1'
@@ -26,6 +27,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       caddy_version: ${{ steps.version.outputs.value }}
+      modules_hash: ${{ steps.hash.outputs.value }}
       bundles: ${{ steps.bundles.outputs.json }}
     steps:
       - uses: actions/checkout@v6.0.2
@@ -38,6 +40,10 @@ jobs:
             VERSION=$(curl -sf https://api.github.com/repos/caddyserver/caddy/releases/latest | jq -r .tag_name)
           fi
           echo "value=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Compute modules hash
+        id: hash
+        run: echo "value=$(sha256sum modules.json | cut -c1-12)" >> "$GITHUB_OUTPUT"
 
       - name: Read bundle names
         id: bundles
@@ -72,13 +78,17 @@ jobs:
           VER="${{ needs.prepare.outputs.caddy_version }}"
           VER="${VER#v}"
           MAJOR_MINOR="$(echo "$VER" | cut -d. -f1,2)"
+          HASH="${{ needs.prepare.outputs.modules_hash }}"
           BUNDLE="${{ matrix.bundle }}"
           REPO="ghcr.io/${{ github.repository_owner }}/sharan-caddy"
           if [ "$BUNDLE" = "latest" ]; then
-            echo "list=${REPO}:latest,${REPO}:${MAJOR_MINOR},${REPO}:${VER}" >> "$GITHUB_OUTPUT"
+            IMMUTABLE="${REPO}:${VER}-${HASH}"
+            echo "list=${REPO}:latest,${REPO}:${MAJOR_MINOR},${REPO}:${VER},${IMMUTABLE}" >> "$GITHUB_OUTPUT"
           else
-            echo "list=${REPO}:${BUNDLE},${REPO}:${MAJOR_MINOR}-${BUNDLE},${REPO}:${VER}-${BUNDLE}" >> "$GITHUB_OUTPUT"
+            IMMUTABLE="${REPO}:${VER}-${BUNDLE}-${HASH}"
+            echo "list=${REPO}:${BUNDLE},${REPO}:${MAJOR_MINOR}-${BUNDLE},${REPO}:${VER}-${BUNDLE},${IMMUTABLE}" >> "$GITHUB_OUTPUT"
           fi
+          echo "immutable=${IMMUTABLE}" >> "$GITHUB_OUTPUT"
           echo "first=${REPO}:${BUNDLE}" >> "$GITHUB_OUTPUT"
 
       - name: Check bundle type
@@ -99,7 +109,7 @@ jobs:
         uses: docker/build-push-action@v7.1.0
         with:
           context: .
-          platforms: linux/amd64,linux/arm64,linux/arm/v7
+          platforms: linux/amd64,linux/arm64
           push: true
           tags: ${{ steps.tags.outputs.list }}
           build-args: |
@@ -108,7 +118,23 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      - name: Smoke test
+      - name: Module smoke test
+        if: steps.type.outputs.retag == ''
+        run: |
+          IDS=$(jq -r --arg b "${{ matrix.bundle }}" '.bundles[] | select(.name == $b) | .modules[].id' modules.json)
+          OUTPUT=$(docker run --rm "${{ steps.tags.outputs.first }}" caddy list-modules)
+          STATUS=0
+          while IFS= read -r id; do
+            [ -z "$id" ] && continue
+            if ! echo "$OUTPUT" | grep -qF "$id"; then
+              echo "missing module: $id" >&2
+              STATUS=1
+            fi
+          done <<< "$IDS"
+          exit $STATUS
+
+      - name: Retag smoke test
+        if: steps.type.outputs.retag != ''
         run: docker run --rm "${{ steps.tags.outputs.first }}" caddy version
 
       - name: File issue on failure
@@ -116,5 +142,97 @@ jobs:
         uses: peter-evans/create-issue-from-file@v6.0.0
         with:
           title: 'Build failed: ${{ matrix.bundle }} (${{ needs.prepare.outputs.caddy_version }})'
+          content-filepath: .github/ISSUE_TEMPLATE/build-failed.md
+          labels: build-failure
+
+  package:
+    needs: [prepare, build]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v6.0.2
+
+      - name: Compute release identifiers
+        id: release
+        run: |
+          VER="${{ needs.prepare.outputs.caddy_version }}"
+          VER="${VER#v}"
+          HASH="${{ needs.prepare.outputs.modules_hash }}"
+          echo "version=$VER" >> "$GITHUB_OUTPUT"
+          echo "hash=$HASH" >> "$GITHUB_OUTPUT"
+          echo "tag=v${VER}-${HASH}" >> "$GITHUB_OUTPUT"
+
+      - name: Check for existing release
+        id: existing
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if gh release view "${{ steps.release.outputs.tag }}" --repo "${{ github.repository }}" >/dev/null 2>&1; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Set up Go
+        if: steps.existing.outputs.skip == 'false'
+        uses: actions/setup-go@v5
+        with:
+          go-version: stable
+
+      - name: Install xcaddy and nfpm
+        if: steps.existing.outputs.skip == 'false'
+        run: |
+          go install github.com/caddyserver/xcaddy/cmd/xcaddy@latest
+          go install github.com/goreleaser/nfpm/v2/cmd/nfpm@latest
+
+      - name: Build binaries
+        if: steps.existing.outputs.skip == 'false'
+        run: |
+          MODULES=$(jq -r '.bundles[] | select(.name == "latest") | .modules[] | "--with \(.import)@\(.version)"' modules.json | tr '\n' ' ')
+          for ARCH in amd64 arm64; do
+            mkdir -p "dist/${ARCH}"
+            CGO_ENABLED=0 GOOS=linux GOARCH="$ARCH" xcaddy build "v${{ steps.release.outputs.version }}" $MODULES --output "dist/${ARCH}/sharan-caddy"
+          done
+
+      - name: Archive binaries
+        if: steps.existing.outputs.skip == 'false'
+        run: |
+          mkdir -p dist/archives
+          for ARCH in amd64 arm64; do
+            tar -C "dist/${ARCH}" -czf "dist/archives/sharan-caddy_${{ steps.release.outputs.version }}-${{ steps.release.outputs.hash }}_linux_${ARCH}.tar.gz" sharan-caddy
+          done
+
+      - name: Generate manpages
+        if: steps.existing.outputs.skip == 'false'
+        run: scripts/manpages.sh dist/amd64/sharan-caddy dist/man
+
+      - name: Build packages
+        if: steps.existing.outputs.skip == 'false'
+        run: |
+          mkdir -p dist/packages
+          for ARCH in amd64 arm64; do
+            for FMT in deb rpm apk archlinux; do
+              ARCH="$ARCH" VERSION="${{ steps.release.outputs.version }}" HASH="${{ steps.release.outputs.hash }}" \
+                nfpm package --config packaging/sharan-caddy/nfpm.yaml --packager "$FMT" --target dist/packages/
+            done
+          done
+
+      - name: Create release
+        if: steps.existing.outputs.skip == 'false'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "${{ steps.release.outputs.tag }}" \
+            dist/archives/*.tar.gz dist/packages/* \
+            --repo "${{ github.repository }}" \
+            --title "${{ steps.release.outputs.tag }}" \
+            --notes "Caddy ${{ steps.release.outputs.version }}, modules hash ${{ steps.release.outputs.hash }}."
+
+      - name: File issue on failure
+        if: failure()
+        uses: peter-evans/create-issue-from-file@v6.0.0
+        with:
+          title: 'Package build failed: ${{ needs.prepare.outputs.caddy_version }}'
           content-filepath: .github/ISSUE_TEMPLATE/build-failed.md
           labels: build-failure
