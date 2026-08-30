@@ -186,21 +186,40 @@ jobs:
         with:
           go-version: stable
 
-      - name: Install xcaddy, nfpm and go-md2man
+      - name: Install xcaddy, nfpm, go-md2man and go-licenses
         if: steps.existing.outputs.skip == 'false'
         run: |
           go install github.com/caddyserver/xcaddy/cmd/xcaddy@v0.4.6
           go install github.com/goreleaser/nfpm/v2/cmd/nfpm@v2.47.0
           go install github.com/cpuguy83/go-md2man/v2@v2.0.7
+          go install github.com/google/go-licenses/v2@v2.0.1
 
       - name: Build binaries
         if: steps.existing.outputs.skip == 'false'
         run: |
           MODULES=$(go run ./tools/modtool xcaddy-args "$BUNDLE")
-          for ARCH in amd64 arm64; do
-            mkdir -p "dist/${ARCH}"
-            CGO_ENABLED=0 GOOS=linux GOARCH="$ARCH" xcaddy build "v${{ steps.release.outputs.version }}" $MODULES --output "dist/${ARCH}/sharan-caddy"
-          done
+
+          mkdir -p dist/amd64
+          XCADDY_SKIP_CLEANUP=1 CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
+            xcaddy build "v${{ steps.release.outputs.version }}" $MODULES --output dist/amd64/sharan-caddy 2>&1 | tee dist/xcaddy-amd64.log
+
+          BUILD_DIR=$(grep -oP 'leaving folder intact: \K.*' dist/xcaddy-amd64.log | tail -1)
+          if [ -z "$BUILD_DIR" ] || [ ! -d "$BUILD_DIR" ]; then
+            echo "could not locate xcaddy build dir from log output" >&2
+            exit 1
+          fi
+          echo "XCADDY_BUILD_DIR=$BUILD_DIR" >> "$GITHUB_ENV"
+
+          mkdir -p dist/arm64
+          CGO_ENABLED=0 GOOS=linux GOARCH=arm64 xcaddy build "v${{ steps.release.outputs.version }}" $MODULES --output dist/arm64/sharan-caddy
+
+      - name: Generate thirdparty license bundle
+        if: steps.existing.outputs.skip == 'false'
+        run: |
+          OUT="$GITHUB_WORKSPACE/dist/thirdparty-licenses"
+          rm -rf "$OUT"
+          MODULE_NAME=$(head -1 "$XCADDY_BUILD_DIR/go.mod" | awk '{print $2}')
+          (cd "$XCADDY_BUILD_DIR" && go-licenses save ./... --save_path="$OUT" --ignore="$MODULE_NAME")
 
       - name: Binary smoke test
         if: steps.existing.outputs.skip == 'false'

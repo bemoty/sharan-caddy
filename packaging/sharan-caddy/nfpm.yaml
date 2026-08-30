@@ -62,6 +62,11 @@ contents:
     file_info:
       mode: 0644
 
+  - src: dist/thirdparty-licenses
+    dst: /usr/share/licenses/sharan-caddy/thirdparty
+    file_info:
+      mode: 0644
+
   - src: LICENSE
     dst: /usr/share/licenses/sharan-caddy/LICENSE
     file_info:
