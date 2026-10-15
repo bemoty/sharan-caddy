@@ -154,6 +154,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      issues: write
     env:
       BUNDLE: latest
     steps:
@@ -219,7 +220,17 @@ jobs:
           OUT="$GITHUB_WORKSPACE/dist/thirdparty-licenses"
           rm -rf "$OUT"
           MODULE_NAME=$(head -1 "$XCADDY_BUILD_DIR/go.mod" | awk '{print $2}')
-          (cd "$XCADDY_BUILD_DIR" && go-licenses save ./... --save_path="$OUT" --ignore="$MODULE_NAME")
+          IGNORES=(--ignore="$MODULE_NAME")
+          while read -r pkg _; do
+            [ -z "$pkg" ] && continue
+            IGNORES+=(--ignore="$pkg")
+          done < <(grep -v '^#' "$GITHUB_WORKSPACE/packaging/sharan-caddy/license-ignore.txt")
+          (cd "$XCADDY_BUILD_DIR" && go-licenses save ./... --save_path="$OUT" "${IGNORES[@]}")
+
+          CHROMA=github.com/alecthomas/chroma/v2
+          CHROMA_DIR=$(cd "$XCADDY_BUILD_DIR" && go list -m -f '{{.Dir}}' "$CHROMA")
+          mkdir -p "$OUT/$CHROMA"
+          cp "$CHROMA_DIR/COPYING" "$OUT/$CHROMA/COPYING"
 
       - name: Binary smoke test
         if: steps.existing.outputs.skip == 'false'

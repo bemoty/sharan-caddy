@@ -1,0 +1,3 @@
+# Packages skipped by go-licenses. Format: <package prefix> <reason>
+github.com/alecthomas/chroma/v2 MIT, license file named COPYING is not detected
+github.com/caddy-dns/digitalocean no license file upstream
